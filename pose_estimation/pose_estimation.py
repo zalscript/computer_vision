@@ -234,6 +234,8 @@ def main():
                         color = (255, 165, 0) # Orange
                     elif stage == "Squatting":
                         color = (128, 0, 128) # Purple for Squatting
+                    elif stage == "Waving":
+                        color = (0, 200, 255) # Teal for Waving
                     elif stage == "Legs Not Visible":
                         color = (0, 0, 255) # Red
                     elif stage == "Jumping":
