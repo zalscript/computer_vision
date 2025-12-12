@@ -127,11 +127,15 @@ def main():
                     stage = "Unknown"
                     if avg_angle > 160:
                         stage = "Standing"
-                    elif avg_angle >= 140 and avg_angle <= 160:
+                    elif 140 <= avg_angle <= 160:
                         # Ambiguous states between sitting and standing
-                        stage = "Bending" 
-                    elif avg_angle > 0 and avg_angle < 140:
+                        stage = "Bending"
+                    elif 70 < avg_angle < 140:
+                        # Typical sitting / relaxed knees
                         stage = "Sitting"
+                    elif 0 < avg_angle <= 70:
+                        # Knees very bent -> squatting
+                        stage = "Squatting"
                     elif avg_angle == 0:
                         stage = "Legs Not Visible"
 
@@ -180,6 +184,8 @@ def main():
                         color = (0, 255, 255) # Yellow
                     elif stage == "Bending":
                         color = (255, 165, 0) # Orange
+                    elif stage == "Squatting":
+                        color = (128, 0, 128) # Purple for Squatting
                     elif stage == "Legs Not Visible":
                         color = (0, 0, 255) # Red
                     elif stage == "Jumping":
