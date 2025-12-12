@@ -57,6 +57,15 @@ def main():
 
         # Visualize the results on the frame
         annotated_frame = results[0].plot()
+        # ----- Jump detection state (ground plane baseline per detected person) -----
+        # We store/update ankle baseline when person is detected as Standing.
+        # If ankle Y is significantly above baseline, we mark as 'Jumping'.
+        if not hasattr(main, "_ground_baselines"):
+            main._ground_baselines = {}
+            main._jump_cooldowns = {}
+        EMA_ALPHA = 0.1
+        JUMP_THRESHOLD_RATIO = 0.08  # fraction of frame height that constitutes a jump
+        JUMP_DEBOUNCE_FRAMES = 6
         
         # Process keypoints for action recognition
         try:
@@ -125,6 +134,40 @@ def main():
                         stage = "Sitting"
                     elif avg_angle == 0:
                         stage = "Legs Not Visible"
+
+                    # Compute ankle Y (image coordinates: y increases downwards)
+                    frame_h = frame.shape[0]
+                    ankle_y = None
+                    if np.count_nonzero(l_ankle) == 2 and np.count_nonzero(r_ankle) == 2:
+                        ankle_y = (l_ankle[1] + r_ankle[1]) / 2.0
+                    elif np.count_nonzero(l_ankle) == 2:
+                        ankle_y = l_ankle[1]
+                    elif np.count_nonzero(r_ankle) == 2:
+                        ankle_y = r_ankle[1]
+
+                    # Update ground baseline when standing
+                    if ankle_y is not None:
+                        if stage == "Standing":
+                            if person_idx not in main._ground_baselines:
+                                main._ground_baselines[person_idx] = float(ankle_y)
+                            else:
+                                main._ground_baselines[person_idx] = (
+                                    (1 - EMA_ALPHA) * main._ground_baselines[person_idx]
+                                    + EMA_ALPHA * float(ankle_y)
+                                )
+
+                        # Check for jump: baseline - current_y > threshold (smaller y = higher)
+                        if person_idx in main._ground_baselines:
+                            baseline = main._ground_baselines[person_idx]
+                            delta = baseline - float(ankle_y)
+                            threshold = JUMP_THRESHOLD_RATIO * frame_h
+                            # debounce using cooldown frames to avoid flicker
+                            cooldown = main._jump_cooldowns.get(person_idx, 0)
+                            if delta > threshold and cooldown == 0:
+                                stage = "Jumping"
+                                main._jump_cooldowns[person_idx] = JUMP_DEBOUNCE_FRAMES
+                            elif cooldown > 0:
+                                main._jump_cooldowns[person_idx] = cooldown - 1
                     
                     # Display the status on the image
                     # Get bounding box for text position
@@ -139,6 +182,8 @@ def main():
                         color = (255, 165, 0) # Orange
                     elif stage == "Legs Not Visible":
                         color = (0, 0, 255) # Red
+                    elif stage == "Jumping":
+                        color = (255, 0, 0) # Blue-ish for Jumping
                     
                     cv2.putText(annotated_frame, f"{stage} ({int(avg_angle)})", 
                                 (x1, y1 - 10), 
