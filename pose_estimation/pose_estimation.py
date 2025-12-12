@@ -57,15 +57,20 @@ def main():
 
         # Visualize the results on the frame
         annotated_frame = results[0].plot()
-        # ----- Jump detection state (ground plane baseline per detected person) -----
-        # We store/update ankle baseline when person is detected as Standing.
+        # ----- Jump & Waving detection state (per detected person) -----
+        # Ground baseline: store/update ankle baseline when person is Standing.
         # If ankle Y is significantly above baseline, we mark as 'Jumping'.
         if not hasattr(main, "_ground_baselines"):
             main._ground_baselines = {}
             main._jump_cooldowns = {}
+            main._wrist_hist = {}
         EMA_ALPHA = 0.1
         JUMP_THRESHOLD_RATIO = 0.08  # fraction of frame height that constitutes a jump
         JUMP_DEBOUNCE_FRAMES = 6
+        # Waving detection params (wrist above eye + left-right motion)
+        WRIST_HIST_LEN = 8
+        WRIST_MOVE_THRESH_RATIO = 0.06  # fraction of frame width for lateral movement
+        WRIST_DIR_CHANGES = 2
         
         # Process keypoints for action recognition
         try:
@@ -172,6 +177,49 @@ def main():
                                 main._jump_cooldowns[person_idx] = JUMP_DEBOUNCE_FRAMES
                             elif cooldown > 0:
                                 main._jump_cooldowns[person_idx] = cooldown - 1
+
+                    # --- Waving detection ---
+                    # Keypoint indices (COCO): 1:left eye, 2:right eye, 9:left wrist, 10:right wrist
+                    l_eye = kps_np[1][:2]
+                    r_eye = kps_np[2][:2]
+                    l_wrist = kps_np[9][:2]
+                    r_wrist = kps_np[10][:2]
+
+                    # Choose which wrist to consider: prefer wrist that's above its corresponding eye
+                    wrist_x = None
+                    wrist_y_cur = None
+                    frame_w = frame.shape[1]
+                    if np.count_nonzero(l_wrist) == 2 and np.count_nonzero(l_eye) == 2 and l_wrist[1] < l_eye[1]:
+                        wrist_x = float(l_wrist[0])
+                        wrist_y_cur = float(l_wrist[1])
+                    elif np.count_nonzero(r_wrist) == 2 and np.count_nonzero(r_eye) == 2 and r_wrist[1] < r_eye[1]:
+                        wrist_x = float(r_wrist[0])
+                        wrist_y_cur = float(r_wrist[1])
+
+                    if wrist_x is not None:
+                        hist = main._wrist_hist.get(person_idx, [])
+                        hist.append(wrist_x)
+                        if len(hist) > WRIST_HIST_LEN:
+                            hist.pop(0)
+                        main._wrist_hist[person_idx] = hist
+
+                        # Detect lateral oscillation: enough samples, sufficient peak-to-peak and direction changes
+                        waving = False
+                        if len(hist) >= WRIST_HIST_LEN:
+                            diffs = np.diff(np.array(hist))
+                            signs = np.sign(diffs)
+                            # count sign changes ignoring zeros
+                            nonzero = signs[signs != 0]
+                            dir_changes = 0
+                            if len(nonzero) > 1:
+                                dir_changes = np.sum(nonzero[1:] != nonzero[:-1])
+                            p2p = float(np.max(hist) - np.min(hist))
+                            thresh = WRIST_MOVE_THRESH_RATIO * frame_w
+                            if dir_changes >= WRIST_DIR_CHANGES and p2p > thresh:
+                                waving = True
+
+                        if waving:
+                            stage = "Waving"
                     
                     # Display the status on the image
                     # Get bounding box for text position
