@@ -5,7 +5,7 @@ import cv2
 from ultralytics import YOLO
 
 
-# URL stream CCTV default (ganti jika perlu)
+# URL stream CCTV default
 STREAM_URL = "https://atcs-dishub.bandung.go.id:1990/SimpangLima/stream.m3u8"
 
 

@@ -26,6 +26,9 @@ while True:
         print("Error: Tidak dapat membaca frame dari webcam.")
         break
     
+    # Flip frame agar tidak mirror
+    frame = cv2.flip(frame, 1)
+    
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5)
     
